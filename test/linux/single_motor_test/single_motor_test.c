@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <math.h>
 
-#define NUM_SLAVES 3
+#define NUM_SLAVES 1
 volatile sig_atomic_t keep_running = 1;
 
 typedef struct __attribute__((packed))

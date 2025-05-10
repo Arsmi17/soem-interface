@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#define NUM_SLAVES 3
+#define NUM_SLAVES 1
 volatile sig_atomic_t keep_running = 1;
 
 // Adjust this structure to match your PDO mapping for velocity mode
