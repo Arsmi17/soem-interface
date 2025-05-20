@@ -52,6 +52,8 @@ void send_and_receive()
     ec_receive_processdata(EC_TIMEOUTRET);
     usleep(1000);
 }
+
+
 #define POSITION_ACTUAL_VALUE_OFFSET 4 // Assuming position data starts from offset 4
 #define RAW_STEPS_PER_METER 806074880  // Raw steps you're receiving for 1 meter
 #define ACTUAL_STEPS_PER_METER 3148730 // Actual steps it should represent

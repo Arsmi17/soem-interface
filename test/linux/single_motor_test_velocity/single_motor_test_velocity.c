@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#define NUM_SLAVES 3
+#define NUM_SLAVES 1
 volatile sig_atomic_t keep_running = 1;
 
 // Adjust this structure to match your PDO mapping for velocity mode
@@ -82,7 +82,7 @@ int write_leadshine_param_home(uint16 slave, uint16 param_number, uint32 value)
     uint8 subindex = 0x00;
     int size = sizeof(value);
 
-    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value);
+    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value,EC_TIMEOUTRXM);
     if (success)
     {
         printf("✅ Successfully wrote Pr0.%d = %d to slave %d (index 0x%04X)\n",
