@@ -1,3 +1,11 @@
 {
-    "idf.pythonInstallPath": "/Users/abilashs/.pyenv/shims/python"
+    "idf.pythonInstallPath": "/Users/abilashs/.pyenv/shims/python",
+    "files.associations": {
+        "*.dbclient-js": "javascript",
+        "ethercat.h": "c",
+        "stdio.h": "c",
+        "termios.h": "c",
+        "string.h": "c",
+        "unistd.h": "c"
+    }
 }

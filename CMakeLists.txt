@@ -22,6 +22,15 @@ else()
   set(BUILD_TESTS FALSE)
 endif()
 
+# Find GTK+ 3.0 for Linux and macOS (required for ui_motor_velocity)
+if(UNIX AND NOT APPLE)  # Linux
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+elseif(APPLE)  # macOS
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+endif()
+
 if(WIN32)
   set(OS "win32")
   include_directories(oshw/win32/wpcap/Include)
@@ -44,10 +53,10 @@ elseif(UNIX AND NOT APPLE)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
   set(OS_LIBS pthread rt)
 elseif(APPLE)
-  # This must come *before* linux or MacOSX will identify as Unix.
   set(OS "macosx")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Werror")
   set(OS_LIBS pthread pcap)
+  link_directories(/opt/homebrew/lib)
 elseif(${CMAKE_SYSTEM_NAME} MATCHES "rt-kernel")
   set(OS "rtk")
   message(STATUS "ARCH is ${ARCH}")
@@ -104,7 +113,7 @@ target_include_directories(soem PUBLIC
 target_include_directories(soem
   PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}/oshw/${OS}>
   $<INSTALL_INTERFACE:include/soem>
-  )
+)
 
 message(STATUS "LIB_DIR: ${SOEM_LIB_INSTALL_DIR}")
 
@@ -123,4 +132,5 @@ if(BUILD_TESTS)
   add_subdirectory(test/linux/slaveinfo)
   add_subdirectory(test/linux/slave_detector_api)
   add_subdirectory(test/linux/single_motor_test_velocity)
+  add_subdirectory(test/linux/ui_motor_velocity)
 endif()
