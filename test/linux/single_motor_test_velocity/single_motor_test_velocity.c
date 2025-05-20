@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#define NUM_SLAVES 1
+#define NUM_SLAVES 3
 volatile sig_atomic_t keep_running = 1;
 
 // Adjust this structure to match your PDO mapping for velocity mode
@@ -21,10 +21,10 @@ typedef struct __attribute__((packed))
 
 typedef struct __attribute__((packed))
 {
-    uint16_t status_word;           // 0x6041
-    int32_t actual_position;        // 0x6064
-    int32_t actual_velocity;        // 0x606C
-    int16_t actual_torque;          // 0x6077
+    uint16_t status_word;              // 0x6041
+    int32_t actual_position;           // 0x6064
+    int32_t actual_velocity;           // 0x606C
+    int16_t actual_torque;             // 0x6077
     uint8_t mode_of_operation_display; // 0x6061
 } el7_in_t;
 
@@ -59,18 +59,41 @@ void send_and_receive()
 // Set mode to Profile Velocity Mode via SDO
 void set_velocity_mode(int slave_idx)
 {
-    uint8_t mode = 3;  // Profile Velocity Mode
+    uint8_t mode = 3; // Profile Velocity Mode
 
     printf("Setting slave %d to Profile Velocity Mode (3)...\n", slave_idx + 1);
-    if (ec_SDOwrite(slave_idx + 1, 0x6060, 0x00, FALSE, sizeof(mode), &mode, EC_TIMEOUTSAFE)) {
+    if (ec_SDOwrite(slave_idx + 1, 0x6060, 0x00, FALSE, sizeof(mode), &mode, EC_TIMEOUTSAFE))
+    {
         printf("Successfully set mode of operation to Profile Velocity Mode (3)\n");
-    } else {
+    }
+    else
+    {
         printf("Failed to set mode of operation! Will try via PDO.\n");
         // Try via PDO as fallback
         out_data[slave_idx]->mode_of_operation = 3;
         send_and_receive();
     }
-    usleep(50000);  // Give time for mode change to take effect
+    usleep(50000); // Give time for mode change to take effect
+}
+
+int write_leadshine_param_home(uint16 slave, uint16 param_number, uint32 value)
+{
+    uint16 index = 0x3000 + param_number;
+    uint8 subindex = 0x00;
+    int size = sizeof(value);
+
+    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value);
+    if (success)
+    {
+        printf("✅ Successfully wrote Pr0.%d = %d to slave %d (index 0x%04X)\n",
+               param_number, value, slave, index);
+    }
+    else
+    {
+        printf("❌ Failed to write Pr0.%d to slave %d (index 0x%04X)\n",
+               param_number, slave, index);
+    }
+    return success;
 }
 
 // Verify the current mode
@@ -79,13 +102,17 @@ void verify_mode_of_operation(int slave_idx)
     uint8_t mode;
     int size = sizeof(mode);
     int result = ec_SDOread(slave_idx + 1, 0x6061, 0x00, FALSE, &size, &mode, EC_TIMEOUTSAFE);
-    
-    if (result == 1) {
+
+    if (result == 1)
+    {
         printf("Current mode of operation for slave %d is: %d\n", slave_idx + 1, mode);
-        if (mode != 3) {
+        if (mode != 3)
+        {
             printf("WARNING: Actual mode is not Profile Velocity Mode (3)!\n");
         }
-    } else {
+    }
+    else
+    {
         printf("Failed to read mode of operation display for slave %d\n", slave_idx + 1);
     }
 }
@@ -94,30 +121,34 @@ void verify_mode_of_operation(int slave_idx)
 void set_velocity(int slave_idx, int32_t velocity)
 {
     printf("Setting velocity for slave %d to %" PRId32 "\n", slave_idx + 1, velocity);
-    
+
     // First, try setting via SDO for initial setup
-    if (ec_SDOwrite(slave_idx + 1, 0x60FF, 0x00, FALSE, sizeof(velocity), &velocity, EC_TIMEOUTSAFE)) {
+    if (ec_SDOwrite(slave_idx + 1, 0x60FF, 0x00, FALSE, sizeof(velocity), &velocity, EC_TIMEOUTSAFE))
+    {
         printf("Successfully set target velocity via SDO\n");
-    } else {
+    }
+    else
+    {
         printf("Failed to set target velocity via SDO, will use PDO\n");
     }
-    
+
     // Always update via PDO for continuous operation
     out_data[slave_idx]->target_velocity = velocity;
-    
+
     // Make sure control word enables operation
-    out_data[slave_idx]->control_word = 0x000F;  // Enable operation
-    
+    out_data[slave_idx]->control_word = 0x000F; // Enable operation
+
     send_and_receive();
-    
+
     // Read back status word
     uint16_t status = in_data[slave_idx]->status_word;
     printf("Status Word after set_velocity: 0x%04X\n", status);
-    
+
     // Read back the actual velocity to verify
     int32_t actual_velocity;
     int size = sizeof(actual_velocity);
-    if (ec_SDOread(slave_idx + 1, 0x606C, 0x00, FALSE, &size, &actual_velocity, EC_TIMEOUTSAFE) == 1) {
+    if (ec_SDOread(slave_idx + 1, 0x606C, 0x00, FALSE, &size, &actual_velocity, EC_TIMEOUTSAFE) == 1)
+    {
         printf("Current actual velocity: %" PRId32 "\n", actual_velocity);
     }
 }
@@ -125,10 +156,10 @@ void set_velocity(int slave_idx, int32_t velocity)
 void stop_motor(int slave_idx)
 {
     printf("Stopping motor %d\n", slave_idx + 1);
-    
+
     // Set velocity to 0
     set_velocity(slave_idx, 0);
-    
+
     send_and_receive();
     usleep(10000);
 }
@@ -136,10 +167,10 @@ void stop_motor(int slave_idx)
 void quick_stop_motor(int slave_idx)
 {
     printf("Quick stopping motor %d\n", slave_idx + 1);
-    out_data[slave_idx]->control_word = 0x0002;  // Quick stop command
+    out_data[slave_idx]->control_word = 0x0002; // Quick stop command
     send_and_receive();
     usleep(10000);
-    
+
     // After quick stop, you may need to transition back to operation enabled
     out_data[slave_idx]->control_word = 0x000F;
 }
@@ -150,22 +181,24 @@ void reset_fault(int slave_idx)
     out_data[slave_idx]->control_word = 0x80;
     send_and_receive();
     usleep(10000);
-    
+
     // Clear the fault bit and restore operation
     out_data[slave_idx]->control_word = 0x0F;
     send_and_receive();
 }
 
-void enable_drive(int slave_idx) {
+void enable_drive(int slave_idx)
+{
     printf("Enabling drive %d...\n", slave_idx + 1);
-    
+
     // First check for faults and reset if needed
     send_and_receive();
     uint16_t status_word = in_data[slave_idx]->status_word;
-    
+
     // Check if fault bit (bit 3) is set
-    if (status_word & 0x0008) {
-        printf("Fault detected on drive %d (Status: 0x%04X). Resetting...\n", 
+    if (status_word & 0x0008)
+    {
+        printf("Fault detected on drive %d (Status: 0x%04X). Resetting...\n",
                slave_idx + 1, status_word);
         reset_fault(slave_idx);
         usleep(50000); // Give time for fault to clear
@@ -173,32 +206,35 @@ void enable_drive(int slave_idx) {
 
     // State transition sequence
     printf("State transition sequence...\n");
-    
+
     // Step 1: Shutdown (if not already in that state)
     out_data[slave_idx]->control_word = 0x0006; // Shutdown
     send_and_receive();
     usleep(50000);
-    
+
     // Step 2: Switch On
     out_data[slave_idx]->control_word = 0x0007; // Switch On
     send_and_receive();
     usleep(50000);
-    
+
     // Step 3: Enable Operation
     out_data[slave_idx]->control_word = 0x000F; // Enable Operation
     send_and_receive();
     usleep(50000);
-    
+
     // Check final status
     send_and_receive();
     status_word = in_data[slave_idx]->status_word;
     printf("Drive %d status after enable sequence: 0x%04X\n", slave_idx + 1, status_word);
-    
+
     // Check if we're in "Operation enabled" state (bits 0,1,2,5 set: 0x0027)
-    if ((status_word & 0x006F) == 0x0027) {
+    if ((status_word & 0x006F) == 0x0027)
+    {
         printf("Drive %d successfully enabled\n", slave_idx + 1);
-    } else {
-        printf("WARNING: Drive %d may not be fully enabled (Status: 0x%04X)\n", 
+    }
+    else
+    {
+        printf("WARNING: Drive %d may not be fully enabled (Status: 0x%04X)\n",
                slave_idx + 1, status_word);
     }
 }
@@ -232,11 +268,12 @@ void int_handler(int sig)
     exit(0);
 }
 
-int selected_slave = -1;  // Global variable to track the selected slave (-1 means no slave is selected)
+int selected_slave = -1; // Global variable to track the selected slave (-1 means no slave is selected)
 
 void select_slave(int slave_idx)
 {
-    if (slave_idx < 0 || slave_idx >= NUM_SLAVES) {
+    if (slave_idx < 0 || slave_idx >= NUM_SLAVES)
+    {
         printf("Invalid slave index %d. Valid range is 0 to %d.\n", slave_idx, NUM_SLAVES - 1);
         return;
     }
@@ -248,7 +285,7 @@ int main()
 {
     signal(SIGINT, int_handler);
 
-    if (!ec_init("enp0s31f6"))  // Replace with your network interface
+    if (!ec_init("enp0s31f6")) // Replace with your network interface
     {
         printf("Failed to initialize EtherCAT interface.\n");
         return -1;
@@ -287,7 +324,7 @@ int main()
         ec_slave[i + 1].state = EC_STATE_OPERATIONAL;
         ec_writestate(i + 1);
     }
-    usleep(100000);  // Longer delay to ensure transition
+    usleep(100000); // Longer delay to ensure transition
 
     for (int i = 0; i < NUM_SLAVES; ++i)
     {
@@ -300,7 +337,8 @@ int main()
     }
 
     // Verify that the mode was properly set
-    for (int i = 0; i < NUM_SLAVES; ++i) {
+    for (int i = 0; i < NUM_SLAVES; ++i)
+    {
         verify_mode_of_operation(i);
     }
 
@@ -312,7 +350,7 @@ int main()
 
     setup_keyboard();
     int running = 1;
-    int velocity_level = 160000;  // Start with a lower velocity (adjust as needed)
+    int velocity_level = 160000; // Start with a lower velocity (adjust as needed)
     int velocity_increment = 500;
 
     while (running)
@@ -331,16 +369,16 @@ int main()
         int ch = getchar();
         switch (ch)
         {
-            case '1':
-            case '2':
-            case '3':
-            case '4': 
-            case '5':
-                {
-                    int idx = ch - '1';  // Convert ASCII character to zero-based index
-                    select_slave(idx);
-                }
-                break;
+        case '1':
+        case '2':
+        case '3':
+        case '4':
+        case '5':
+        {
+            int idx = ch - '1'; // Convert ASCII character to zero-based index
+            select_slave(idx);
+        }
+        break;
 
         case 'i':
             for (int i = 0; i < NUM_SLAVES; i++)
@@ -363,27 +401,47 @@ int main()
             break;
 
         case 'q':
-            if (selected_slave == -1) {
+            if (selected_slave == -1)
+            {
                 printf("No slave selected. Press 's' to select a slave first.\n");
-            } else {
+            }
+            else
+            {
                 printf("Moving forward at velocity %d for slave %d...\n", velocity_level, selected_slave + 1);
                 set_velocity(selected_slave, velocity_level);
             }
             break;
 
         case 'w':
-            if (selected_slave == -1) {
+            if (selected_slave == -1)
+            {
                 printf("No slave selected. Press 's' to select a slave first.\n");
-            } else {
+            }
+            else
+            {
                 printf("Moving in reverse at velocity %d for slave %d...\n", -velocity_level, selected_slave + 1);
                 set_velocity(selected_slave, -velocity_level);
             }
             break;
 
-        case ' ': // Space key to stop
-            if (selected_slave == -1) {
+        case 't':
+            if (selected_slave == -1)
+            {
                 printf("No slave selected. Press 's' to select a slave first.\n");
-            } else {
+            }
+            else
+            {
+                printf("Moving in reverse at velocity %d for slave %d...\n", -velocity_level, selected_slave + 1);
+                write_leadshine_param_home(selected_slave, 15, 1);
+            }
+            break;
+        case ' ': // Space key to stop
+            if (selected_slave == -1)
+            {
+                printf("No slave selected. Press 's' to select a slave first.\n");
+            }
+            else
+            {
                 printf("Stopping motion for slave %d...\n", selected_slave + 1);
                 stop_motor(selected_slave);
             }

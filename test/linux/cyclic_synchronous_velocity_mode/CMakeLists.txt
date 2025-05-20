@@ -1,0 +1,5 @@
+
+set(SOURCES cyclic_synchronous_velocity_mode.c)
+add_executable(cyclic_synchronous_velocity_mode ${SOURCES})
+target_link_libraries(cyclic_synchronous_velocity_mode soem)
+install(TARGETS cyclic_synchronous_velocity_mode DESTINATION bin)

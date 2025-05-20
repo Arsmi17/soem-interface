@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <math.h>
 
-#define NUM_SLAVES 1
+#define NUM_SLAVES 3
 volatile sig_atomic_t keep_running = 1;
 
 typedef struct __attribute__((packed))
@@ -46,7 +46,6 @@ void restore_keyboard()
     t.c_lflag |= (ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &t);
 }
-
 void send_and_receive()
 {
     ec_send_processdata();
@@ -77,14 +76,18 @@ float read_current_position(int slave_id)
                                      (pos_ptr[1] << 8) |
                                      pos_ptr[0]);
 
+   
     // Apply scaling to get correct position
     float scale_factor = (float)ACTUAL_STEPS_PER_METER / (float)RAW_STEPS_PER_METER;
     float scaled_position = (float)raw_position * scale_factor;
 
-    // float position_in_meters = scaled_position / (float)ACTUAL_STEPS_PER_METER;
-
-    // printf("%f\n", scaled_position);
-    // printf("%f\n", position_in_meters);
+    float position_in_meters = scaled_position / (float)ACTUAL_STEPS_PER_METER;
+    printf("=======================================\n");
+    printf("Slave ID         : %d\n", slave_id);
+    printf("Raw Position     : %d\n", raw_position);
+    printf("Scaled Position  : %.3f\n", scaled_position);
+    printf("Position (meters): %.4f m\n", position_in_meters);
+    printf("=======================================\n\n");
 
     return scaled_position;
 }
@@ -317,9 +320,7 @@ void wait_until_reached(int slave, int target_position)
         // Use same comparison logic that worked before
         if (fabsf(current_pos - target_position) < 1000)
         {
-            printf("Slave %d reached target position %d\n",
-                   slave, target_position);
-
+            printf("Slave %d reached target position %d\n",slave, target_position);
             // Same delay pattern that worked before
             for (int i = 0; i < 100; i++)
             {
@@ -436,8 +437,8 @@ void template_1_loop()
 
 void firstMovement()
 {
-    int quarterMile = 0.3 * ACTUAL_STEPS_PER_METER;
-    int secondMile = 0.2 * ACTUAL_STEPS_PER_METER;
+    int quarterMile = 0.2 * ACTUAL_STEPS_PER_METER;
+    int secondMile = 0.1 * ACTUAL_STEPS_PER_METER;
     safe_move_to_absolute(2, quarterMile);
     delay_with_communication(2);
     safe_move_to_absolute(1, secondMile);
@@ -445,7 +446,9 @@ void firstMovement()
     safe_move_to_absolute(0, 0);
     delay_with_communication(2);
     wait_until_reached(2,quarterMile);
+    wait_until_reached(1, secondMile);
     delay_with_communication(1000);
+
     // int negate_quarterMile = 0.25 * ACTUAL_STEPS_PER_METER;
     // safe_move_to_absolute(0, negate_quarterMile);
 
@@ -481,8 +484,43 @@ void secondMovement()
     delay_with_communication(2);
     safe_move_to_absolute(2, homePosition);
     delay_with_communication(2);
-    wait_until_reached(0, homePosition);
+    wait_until_reached(2, homePosition);
+    wait_until_reached(1, homePosition);
+    wait_until_reached(0,homePosition);
     delay_with_communication(1000);
+}
+
+void testFirstMovement()
+{
+    // int quarterMile = 0.2 * ACTUAL_STEPS_PER_METER;
+    // safe_move_to_absolute(2, quarterMile);
+    // wait_until_reached(1,quarterMile);
+    // delay_with_communication(1000);
+    safe_move_to_absolute(2,0.3*ACTUAL_STEPS_PER_METER);
+    delay_with_communication(10);
+    safe_move_to_absolute(1,0.2*ACTUAL_STEPS_PER_METER);
+    delay_with_communication(10);
+    safe_move_to_absolute(0,0.1*ACTUAL_STEPS_PER_METER);
+    wait_until_reached(2,0.3*ACTUAL_STEPS_PER_METER);
+    wait_until_reached(1,0.2*ACTUAL_STEPS_PER_METER);
+    wait_until_reached(0,0.1*ACTUAL_STEPS_PER_METER);
+    delay_with_communication(1000);
+    printf("Target Reached");
+}
+
+void testSecondMovement()
+{
+    int homePosition = 0;
+    safe_move_to_absolute(0,homePosition);
+    delay_with_communication(10);
+    safe_move_to_absolute(1,homePosition);
+    delay_with_communication(10);
+    safe_move_to_absolute(2,homePosition);
+    wait_until_reached(0,homePosition);
+    wait_until_reached(1,homePosition);
+    wait_until_reached(2,homePosition);
+    delay_with_communication(1000);
+    printf("Target Reached");
 }
 
 void negate_test()
@@ -499,8 +537,9 @@ void negate_test()
 void template_2()
 {
     printf("Running Template 1 Sequence in loop. Press SPACEBAR to stop...\n");
-    firstMovement();
-    secondMovement();
+    testFirstMovement();
+    testSecondMovement();
+    // testMovement();
     printf("Template 1 loop stopped.\n");
 }
 
@@ -515,9 +554,9 @@ void template_2_loop()
     {
         printf("\nStarting loop iteration #%d\n", ++loop_count);
 
-        firstMovement();
+        testFirstMovement();
 
-        secondMovement();
+        testSecondMovement();
 
         // Check for spacebar during the delay
         for (int i = 0; i < 100; i++)
@@ -720,13 +759,22 @@ int main()
         uint32_t acceleration = 200000;
         uint32_t deceleration = 250000;
 
-        // if (i == 1)
-        // {
-        //     profile_velocity /= 2;
-        //     max_velocity /= 2;
-        //     acceleration /= 2;
-        //     deceleration /= 2;
-        // }
+        if (i == 1)
+        {
+            profile_velocity /= 1.5;
+            max_velocity /= 1.5;
+            acceleration /= 1.5;
+            deceleration /= 1.5;
+        }
+
+        if (i == 0)
+        {
+            profile_velocity /= 3;
+            max_velocity /= 3;
+            acceleration /= 3;
+            deceleration /= 3;
+        }
+
 
         // Setting it to Profile Position Mode
         ec_SDOwrite(i + 1, 0x6060, 0x00, FALSE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
@@ -791,10 +839,10 @@ int main()
             template_2_loop();
             break;
         case 'f':
-            firstMovement();
+            testFirstMovement();
             break;
         case 'g':
-            secondMovement();
+            testSecondMovement();
             break;
         // case 'w':
         //     template_2();
