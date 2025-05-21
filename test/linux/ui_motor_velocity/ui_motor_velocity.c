@@ -30,10 +30,11 @@ typedef struct __attribute__((packed))
 char IOmap[4096];
 el7_out_t **out_data;
 el7_in_t **in_data;
-int selected_slave = -1;  // -1 means no slave selected
+int selected_slave = -1;   // -1 means no slave selected
 int velocity_level = 1000; // Default velocity
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 int num_slaves = 0; // Dynamic number of slaves
+static int memory_freed = 0;
 
 // Structure to hold app data
 typedef struct
@@ -122,9 +123,37 @@ void set_velocity_mode(int slave_idx, AppData *data)
     usleep(50000);
 }
 
-int is_drive_enabled(int slave_index, AppData *data) {
+int write_leadshine_param_home(int slave, uint16 param_number, uint32 value, AppData *data)
+{
+    if (slave < 0 || slave >= num_slaves)
+    {
+        printf_to_message_box(data, "Invalid slave index %d. Valid range is 0 to %d.", slave, num_slaves - 1);
+        return FALSE;
+    }
+
+    uint16 index = 0x3000 + param_number;
+    uint8 subindex = 0x00;
+    int size = sizeof(value);
+
+    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value, EC_TIMEOUTRXM);
+    if (success)
+    {
+        printf_to_message_box(data, "Successfully wrote Pr0.%d = %d to slave %d (index 0x%04X)",
+                              param_number, value, slave + 1, index);
+    }
+    else
+    {
+        printf_to_message_box(data, "Failed to write Pr0.%d to slave %d (index 0x%04X)",
+                              param_number, slave + 1, index);
+    }
+    return success;
+}
+
+int is_drive_enabled(int slave_index, AppData *data)
+{
     // Ensure the slave index is valid
-    if (slave_index < 0 || slave_index >= num_slaves) {
+    if (slave_index < 0 || slave_index >= num_slaves)
+    {
         printf_to_message_box(data, "Invalid slave index: %d. Valid range is 0 to %d.", slave_index, num_slaves - 1);
         return FALSE;
     }
@@ -136,7 +165,8 @@ int is_drive_enabled(int slave_index, AppData *data) {
     uint16 slave_state = ec_slave[slave_index + 1].state;
 
     // Check if the slave is in the OPERATIONAL state
-    if (slave_state != EC_STATE_OPERATIONAL) {
+    if (slave_state != EC_STATE_OPERATIONAL)
+    {
         printf_to_message_box(data, "Drive at slave index %d is not in OPERATIONAL state. Current state: %d", slave_index, slave_state);
         return FALSE;
     }
@@ -149,10 +179,12 @@ int is_drive_enabled(int slave_index, AppData *data) {
     send_and_receive(); // Ensure latest PDO data
 
     // Fallback to SDO if PDO data is unreliable
-    if (status_word == 0) {
+    if (status_word == 0)
+    {
         int size = sizeof(status_word);
         int wkc = ec_SDOread(slave_index + 1, 0x6041, 0x00, FALSE, &size, &status_word, EC_TIMEOUTRXM);
-        if (wkc <= 0) {
+        if (wkc <= 0)
+        {
             printf_to_message_box(data, "Failed to read Status Word from slave %d via SDO", slave_index);
             return FALSE;
         }
@@ -161,9 +193,12 @@ int is_drive_enabled(int slave_index, AppData *data) {
     // Check if the "Operation Enabled" bit (Bit 2) is set
     int is_enabled = (status_word & (1 << 2)) != 0;
 
-    if (is_enabled) {
+    if (is_enabled)
+    {
         printf_to_message_box(data, "Drive at slave index %d is enabled. Status Word: 0x%04X", slave_index, status_word);
-    } else {
+    }
+    else
+    {
         printf_to_message_box(data, "Drive at slave index %d is not enabled. Status Word: 0x%04X", slave_index, status_word);
     }
 
@@ -190,9 +225,13 @@ void verify_mode_of_operation(int slave_idx, AppData *data)
     }
 }
 
-// Set velocity directly via SDO and PDO
 void set_velocity(int slave_idx, int32_t velocity, AppData *data)
 {
+    if (slave_idx < 0 || slave_idx >= num_slaves)
+    {
+        printf_to_message_box(data, "Invalid slave index %d.", slave_idx + 1);
+        return;
+    }
     printf_to_message_box(data, "Setting velocity for slave %d to %d", slave_idx + 1, velocity);
     if (ec_SDOwrite(slave_idx + 1, 0x60FF, 0x00, FALSE, sizeof(velocity), &velocity, EC_TIMEOUTSAFE))
     {
@@ -207,7 +246,9 @@ void set_velocity(int slave_idx, int32_t velocity, AppData *data)
     out_data[slave_idx]->control_word = 0x000F;
     pthread_mutex_unlock(&mutex);
     send_and_receive();
+    pthread_mutex_lock(&mutex);
     uint16_t status = in_data[slave_idx]->status_word;
+    pthread_mutex_unlock(&mutex);
     printf_to_message_box(data, "Status Word after set_velocity: 0x%04X", status);
     int32_t actual_velocity;
     int size = sizeof(actual_velocity);
@@ -238,7 +279,8 @@ void quick_stop_motor(int slave_idx, AppData *data)
     pthread_mutex_unlock(&mutex);
 }
 
-void reset_fault(int slave_idx, AppData *data) {
+void reset_fault(int slave_idx, AppData *data)
+{
     printf_to_message_box(data, "Resetting fault on drive %d...", slave_idx + 1);
     pthread_mutex_lock(&mutex);
     out_data[slave_idx]->control_word = 0x80;
@@ -251,9 +293,18 @@ void reset_fault(int slave_idx, AppData *data) {
     send_and_receive();
 }
 
-int enable_drive(int slave_idx, AppData *data) {
-    if (slave_idx < 0 || slave_idx >= num_slaves) {
+int enable_drive(int slave_idx, AppData *data)
+{
+    if (slave_idx < 0 || slave_idx >= num_slaves)
+    {
         printf_to_message_box(data, "Invalid slave index %d. Valid range is 0 to %d.", slave_idx, num_slaves - 1);
+        return FALSE;
+    }
+
+    if (slave_idx != selected_slave)
+    {
+        printf_to_message_box(data, "Cannot enable drive %d: Only selected slave %d can be enabled.",
+                              slave_idx + 1, selected_slave + 1);
         return FALSE;
     }
 
@@ -270,14 +321,16 @@ int enable_drive(int slave_idx, AppData *data) {
     pthread_mutex_unlock(&mutex);
 
     // Check if fault bit (bit 3) is set
-    if (status_word & 0x0008) {
-        printf_to_message_box(data, "Fault detected on drive %d (Status: 0x%04X). Resetting...", 
+    if (status_word & 0x0008)
+    {
+        printf_to_message_box(data, "Fault detected on drive %d (Status: 0x%04X). Resetting...",
                               slave_idx + 1, status_word);
         reset_fault(slave_idx, data);
         usleep(50000); // Give time for fault to clear
     }
 
-    while (retry_count < max_retries && !enabled) {
+    while (retry_count < max_retries && !enabled)
+    {
         // State transition sequence
         pthread_mutex_lock(&mutex);
         out_data[slave_idx]->control_word = 0x06; // "Switch on disabled"
@@ -304,37 +357,53 @@ int enable_drive(int slave_idx, AppData *data) {
         pthread_mutex_unlock(&mutex);
 
         // Check if we're in "Operation enabled" state (bits 0-6: 00100111)
-        if ((status_word & 0x006F) == 0x0027) {
+        if ((status_word & 0x006F) == 0x0027)
+        {
             enabled = TRUE;
-            printf_to_message_box(data, "Drive %d successfully enabled (Status: 0x%04X)", 
+            printf_to_message_box(data, "Drive %d successfully enabled (Status: 0x%04X)",
                                   slave_idx + 1, status_word);
-        } else {
+        }
+        else
+        {
             // If not enabled, check if fault occurred during attempt
-            if (status_word & 0x0008) {
-                printf_to_message_box(data, "Fault occurred during enable attempt %d (Status: 0x%04X)", 
+            if (status_word & 0x0008)
+            {
+                printf_to_message_box(data, "Fault occurred during enable attempt %d (Status: 0x%04X)",
                                       retry_count + 1, status_word);
                 reset_fault(slave_idx, data);
                 usleep(50000);
             }
 
             retry_count++;
-            printf_to_message_box(data, "Drive %d enable attempt %d failed (Status: 0x%04X). Retrying...", 
+            printf_to_message_box(data, "Drive %d enable attempt %d failed (Status: 0x%04X). Retrying...",
                                   slave_idx + 1, retry_count, status_word);
             usleep(50000); // Longer delay between retries
         }
     }
 
-    if (!enabled) {
-        printf_to_message_box(data, "ERROR: Failed to enable drive %d after %d attempts (Status: 0x%04X)", 
+    if (!enabled)
+    {
+        printf_to_message_box(data, "ERROR: Failed to enable drive %d after %d attempts (Status: 0x%04X)",
                               slave_idx + 1, max_retries, status_word);
     }
 
     return enabled;
 }
-
-
 void disable_drive(int slave_idx, AppData *data)
 {
+    if (slave_idx < 0 || slave_idx >= num_slaves)
+    {
+        printf_to_message_box(data, "Invalid slave index %d. Valid range is 0 to %d.", slave_idx, num_slaves - 1);
+        return;
+    }
+
+    if (slave_idx != selected_slave)
+    {
+        printf_to_message_box(data, "Cannot disable drive %d: Only selected slave %d can be disabled.", 
+                              slave_idx + 1, selected_slave + 1);
+        return;
+    }
+
     printf_to_message_box(data, "Disabling drive %d...", slave_idx + 1);
     stop_motor(slave_idx, data);
     usleep(50000);
@@ -343,7 +412,6 @@ void disable_drive(int slave_idx, AppData *data)
     pthread_mutex_unlock(&mutex);
     send_and_receive();
 }
-
 void select_slave(int slave_idx, AppData *data)
 {
     if (slave_idx < 0 || slave_idx >= num_slaves)
@@ -356,37 +424,64 @@ void select_slave(int slave_idx, AppData *data)
 }
 
 // Button callback methods
-void on_enable_motor_clicked(GtkButton *button, AppData *data) {
+void on_enable_motor_clicked(GtkButton *button, AppData *data)
+{
     (void)button;
-    GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(data->message_box));
-    gtk_text_buffer_set_text(buffer, "All motors are enabled", -1);
-    GtkTextIter end;
-    gtk_text_buffer_get_end_iter(buffer, &end);
-    gtk_text_buffer_insert(buffer, &end, "\nMotor system check completed", -1);
-    for (int i = 0; i < num_slaves; i++) {
-        if (!enable_drive(i, data)) {
-            printf_to_message_box(data, "Failed to enable drive %d", i + 1);
-        }
+    if (selected_slave == -1)
+    {
+        printf_to_message_box(data, "No slave selected. Please select a motor first.");
+        return;
+    }
+    if (!enable_drive(selected_slave, data))
+    {
+        printf_to_message_box(data, "Failed to enable drive %d", selected_slave + 1);
+    }
+    else
+    {
+        printf_to_message_box(data, "Motor %d enabled", selected_slave + 1);
     }
 }
 
+
+void on_set_home_position_clicked(GtkButton *button, AppData *data)
+{
+    (void)button;
+    if (selected_slave == -1)
+    {
+        printf_to_message_box(data, "No slave selected. Please select a motor first.");
+        return;
+    }
+    uint16 param_number = 0; // Example: Pr0.00 (adjust as per drive manual)
+    uint32 value = 0;        // Example: Home position 0 (adjust as needed)
+    if (!write_leadshine_param_home(selected_slave, param_number, value, data))
+    {
+        printf_to_message_box(data, "Failed to set home position for slave %d", selected_slave + 1);
+    }
+}
 
 void on_disable_motor_clicked(GtkButton *button, AppData *data)
 {
     (void)button;
-    for (int i = 0; i < num_slaves; i++)
+    if (selected_slave == -1)
     {
-        disable_drive(i, data);
+        printf_to_message_box(data, "No slave selected. Please select a motor first.");
+        return;
     }
-    append_to_message_box(data, "All motors are disabled");
+    disable_drive(selected_slave, data);
+    printf_to_message_box(data, "Motor %d disabled", selected_slave + 1);
 }
 
-void on_check_motor_enabled_clicked(GtkButton *button, AppData *data) {
+void on_check_motor_enabled_clicked(GtkButton *button, AppData *data)
+{
     (void)button;
-    for (int i = 0; i < num_slaves; i++) {
-        if (is_drive_enabled(i, data)) {
+    for (int i = 0; i < num_slaves; i++)
+    {
+        if (is_drive_enabled(i, data))
+        {
             printf_to_message_box(data, "Slave %d is enabled and operational.", i);
-        } else {
+        }
+        else
+        {
             printf_to_message_box(data, "Slave %d is not enabled.", i);
         }
         verify_mode_of_operation(i, data); // Keep existing mode check
@@ -481,28 +576,161 @@ gboolean on_backward_released(GtkWidget *widget, GdkEventButton *event, AppData 
     return TRUE;
 }
 
+void on_emergency_stop_clicked(GtkButton *button, AppData *data)
+{
+    (void)button;
+    if (selected_slave == -1)
+    {
+        printf_to_message_box(data, "No slave selected. Stopping all motors.");
+        for (int i = 0; i < num_slaves; i++)
+        {
+            quick_stop_motor(i, data);
+        }
+    }
+    else
+    {
+        quick_stop_motor(selected_slave, data);
+        printf_to_message_box(data, "Emergency stop triggered for slave %d.", selected_slave + 1);
+    }
+}
+
 void on_motor_toggled(GtkRadioButton *radio, AppData *data)
 {
+    static int previous_slave = -1; // Track previously selected slave
+
     for (int i = 0; i < data->num_radios; i++)
     {
         if (GTK_RADIO_BUTTON(data->motor_radios[i]) == radio && gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(radio)))
         {
+            // Disable the previously enabled slave (if valid and different from new selection)
+            if (previous_slave != -1 && previous_slave != i)
+            {
+                disable_drive(previous_slave, data);
+                printf_to_message_box(data, "Disabled previous slave %d.", previous_slave + 1);
+            }
+
+            // Update selected slave
             select_slave(i, data);
+
+            // Enable the newly selected slave
+            if (!enable_drive(i, data))
+            {
+                printf_to_message_box(data, "Failed to enable new slave %d.", i + 1);
+            }
+            else
+            {
+                printf_to_message_box(data, "Enabled new slave %d.", i + 1);
+            }
+
+            // Update previous_slave to current selection
+            previous_slave = i;
         }
     }
 }
 
-void window_destroy(GtkWidget *widget, AppData *data) {
+void on_close_clicked(GtkButton *button, AppData *data)
+{
+    (void)button;
+    if (!memory_freed)
+    {
+        printf_to_message_box(data, "Close button clicked. Disabling all motors and exiting...");
+        for (int i = 0; i < num_slaves; i++)
+        {
+            int original_selected = selected_slave;
+            selected_slave = i;
+
+            // Reset faults
+            uint16_t status_word;
+            int size = sizeof(status_word);
+            if (ec_SDOread(i + 1, 0x6041, 0x00, FALSE, &size, &status_word, EC_TIMEOUTRXM))
+            {
+                if (status_word & 0x0008)
+                {
+                    printf_to_message_box(data, "Fault (e.g., err816) on slave %d (Status: 0x%04X). Resetting...",
+                                          i + 1, status_word);
+                    reset_fault(i, data);
+                    usleep(50000);
+                }
+            }
+
+            // Log error code
+            uint16_t error_code;
+            size = sizeof(error_code);
+            if (ec_SDOread(i + 1, 0x603F, 0x00, FALSE, &size, &error_code, EC_TIMEOUTRXM))
+            {
+                printf_to_message_box(data, "Slave %d error code: 0x%04X", i + 1, error_code);
+            }
+
+            // Disable PDO timeout alarms
+            uint16_t sync_alarm = 0; // Disable all alarms
+            size = sizeof(sync_alarm);
+            if (ec_SDOwrite(i + 1, 0x5006, 0x00, FALSE, size, &sync_alarm, EC_TIMEOUTRXM))
+            {
+                printf_to_message_box(data, "Disabled PDO timeout alarms for slave %d", i + 1);
+            }
+
+            disable_drive(i, data);
+            selected_slave = original_selected;
+        }
+
+        // Transition slaves to SAFE-OP
+        for (int i = 0; i < num_slaves; i++)
+        {
+            ec_slave[i + 1].state = EC_STATE_SAFE_OP;
+            ec_writestate(i + 1);
+        }
+        ec_statecheck(0, EC_STATE_SAFE_OP, EC_TIMEOUTSTATE);
+        usleep(100000);
+
+        ec_close();
+        restore_keyboard();
+        if (data->motor_radios)
+        {
+            free(data->motor_radios);
+            data->motor_radios = NULL;
+        }
+        if (out_data)
+        {
+            free(out_data);
+            out_data = NULL;
+        }
+        if (in_data)
+        {
+            free(in_data);
+            in_data = NULL;
+        }
+        memory_freed = 1;
+    }
+    gtk_main_quit();
+}
+
+
+gboolean on_key_press(GtkWidget *widget, GdkEventKey *event, AppData *data)
+{
+    (void)widget;
+    if ((event->state & GDK_CONTROL_MASK) && event->keyval == GDK_KEY_r)
+    {
+        on_reset_fault_clicked(NULL, data);
+        printf_to_message_box(data, "Faults reset via Ctrl+R key press.");
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void window_destroy(GtkWidget *widget, AppData *data)
+{
     (void)widget;
     printf_to_message_box(data, "Window closed, stopping motors...");
-    for (int i = 0; i < num_slaves; i++) {
+    for (int i = 0; i < num_slaves; i++)
+    {
         stop_motor(i, data);
         usleep(10000);
         disable_drive(i, data);
     }
     ec_close();
     restore_keyboard();
-    if (data->motor_radios) free(data->motor_radios);
+    if (data->motor_radios)
+        free(data->motor_radios);
     gtk_main_quit();
 }
 
@@ -526,7 +754,14 @@ void signal_handler(int sig)
 
 gboolean update_ethercat(gpointer user_data)
 {
-    (void)user_data; // Mark as unused
+    (void)user_data;
+    // pthread_mutex_lock(&mutex);
+    // for (int i = 0; i < num_slaves; i++) {
+    //     if (is_drive_enabled(i, (AppData *)user_data)) {
+    //         out_data[i]->control_word = 0x000F; // Keep enabled
+    //     }
+    // }
+    // pthread_mutex_unlock(&mutex);
     send_and_receive();
     return G_SOURCE_CONTINUE;
 }
@@ -546,6 +781,20 @@ int main(int argc, char *argv[])
     // Initialize GTK
     gtk_init(&argc, &argv);
     printf("GTK initialized\n");
+
+    GtkCssProvider *provider = gtk_css_provider_new();
+    gtk_css_provider_load_from_data(provider,
+                                    "#emergency-stop {"
+                                    "  background-color: #ff0000;"
+                                    "  color: #ffffff;"
+                                    "  font-weight: bold;"
+                                    "  font-size: 16px;"
+                                    "  padding: 10px;"
+                                    "}",
+                                    -1, NULL);
+    gtk_style_context_add_provider_for_screen(gdk_screen_get_default(),
+                                              GTK_STYLE_PROVIDER(provider), GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+    g_object_unref(provider);
 
     // Initialize EtherCAT to detect slaves
     char *ifname = argc > 1 ? argv[1] : "enp0s31f6";
@@ -570,6 +819,7 @@ int main(int argc, char *argv[])
     GtkWidget *window = gtk_window_new(GTK_WINDOW_TOPLEVEL);
     gtk_window_set_title(GTK_WINDOW(window), "Velocity Motor Control");
     gtk_window_set_default_size(GTK_WINDOW(window), 500, 400);
+    // g_signal_connect(window, "key-press-event", G_CALLBACK(on_key_press), &data);
     g_signal_connect(window, "destroy", G_CALLBACK(window_destroy), NULL);
     printf("Main window created\n");
 
@@ -583,6 +833,7 @@ int main(int argc, char *argv[])
     AppData data = {NULL, NULL, 0, NULL};
     data.num_radios = num_slaves;
     data.motor_radios = malloc(num_slaves * sizeof(GtkWidget *));
+
     if (!data.motor_radios)
     {
         printf("Memory allocation failed for motor_radios!\n");
@@ -594,6 +845,7 @@ int main(int argc, char *argv[])
         data.motor_radios[i] = NULL;
     }
 
+    g_signal_connect(window, "key-press-event", G_CALLBACK(on_key_press), &data);
     // Top section
     GtkWidget *top_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_widget_set_name(top_box, "top-section");
@@ -624,6 +876,22 @@ int main(int argc, char *argv[])
     GtkWidget *clear_button = gtk_button_new_with_label("Clear Logs");
     g_signal_connect(clear_button, "clicked", G_CALLBACK(on_clear_logs_clicked), &data);
     gtk_box_pack_start(GTK_BOX(button_box), clear_button, TRUE, TRUE, 0);
+
+
+    GtkWidget *close_button = gtk_button_new_with_label("Close");
+    g_signal_connect(close_button, "clicked", G_CALLBACK(on_close_clicked), &data);
+    gtk_box_pack_start(GTK_BOX(button_box), close_button, TRUE, TRUE, 0);
+    printf("Close button added\n");
+
+    // Emergency Stop button
+    GtkWidget *emergency_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(top_box), emergency_box, FALSE, FALSE, 0);
+
+    GtkWidget *emergency_button = gtk_button_new_with_label("Emergency Stop");
+    gtk_widget_set_name(emergency_button, "emergency-stop");
+    gtk_widget_set_size_request(emergency_button, 200, 50); // Large size
+    g_signal_connect(emergency_button, "clicked", G_CALLBACK(on_emergency_stop_clicked), &data);
+    gtk_box_pack_start(GTK_BOX(emergency_box), emergency_button, TRUE, TRUE, 0);
 
     // Message box
     data.message_box = gtk_text_view_new();
@@ -698,6 +966,13 @@ int main(int argc, char *argv[])
     gtk_box_pack_start(GTK_BOX(speed_box), data.speed_entry, TRUE, TRUE, 0);
     printf("Speed input added\n");
 
+    GtkWidget *home_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 5);
+    gtk_box_pack_start(GTK_BOX(bottom_box), home_box, FALSE, FALSE, 0);
+
+    GtkWidget *set_home_button = gtk_button_new_with_label("Set Home Position");
+    g_signal_connect(set_home_button, "clicked", G_CALLBACK(on_set_home_position_clicked), &data);
+    gtk_box_pack_start(GTK_BOX(home_box), set_home_button, TRUE, TRUE, 0);
+
     // Show all widgets
     gtk_widget_show_all(window);
     printf("All widgets shown\n");
@@ -733,6 +1008,10 @@ int main(int argc, char *argv[])
         if (!ec_SDOwrite(i + 1, 0x6083, 0x00, FALSE, sizeof(profile_acceleration), &profile_acceleration, EC_TIMEOUTSAFE))
         {
             printf_to_message_box(&data, "Failed to set profile acceleration for slave %d", i + 1);
+            uint16_t status_word;
+            int size = sizeof(status_word);
+            ec_SDOread(i + 1, 0x6041, 0x00, FALSE, &size, &status_word, EC_TIMEOUTRXM);
+            printf_to_message_box(&data, "Slave %d status word: 0x%04X", i + 1, status_word);
             ec_close();
             free(out_data);
             free(in_data);
@@ -743,6 +1022,10 @@ int main(int argc, char *argv[])
         if (!ec_SDOwrite(i + 1, 0x6084, 0x00, FALSE, sizeof(profile_deceleration), &profile_deceleration, EC_TIMEOUTSAFE))
         {
             printf_to_message_box(&data, "Failed to set profile deceleration for slave %d", i + 1);
+            uint16_t status_word;
+            int size = sizeof(status_word);
+            ec_SDOread(i + 1, 0x6041, 0x00, FALSE, &size, &status_word, EC_TIMEOUTRXM);
+            printf_to_message_box(&data, "Slave %d status word: 0x%04X", i + 1, status_word);
             ec_close();
             free(out_data);
             free(in_data);
@@ -800,10 +1083,19 @@ int main(int argc, char *argv[])
     }
 
     // Verify mode of operation
-    for (int i = 0; i < num_slaves; ++i)
+    // for (int i = 0; i < num_slaves; ++i)
+    // {
+    //     is_drive_enabled(i, &data);
+    // }
+
+    for (int i = 0; i < num_slaves; i++)
     {
-        is_drive_enabled(i, &data);
+        pthread_mutex_lock(&mutex);
+        out_data[i]->control_word = 0x000F;
+        pthread_mutex_unlock(&mutex);
     }
+    send_and_receive();
+    printf_to_message_box(&data, "Initialized control word for all slaves.");
 
     printf_to_message_box(&data, "All slaves reached OPERATIONAL state. Ready for control.");
     // Start EtherCAT communication loop
@@ -813,9 +1105,25 @@ int main(int argc, char *argv[])
     gtk_main();
 
     printf("Exiting program...\n");
-    free(out_data);
-    free(in_data);
-    if (data.motor_radios)
-        free(data.motor_radios);
+    if (!memory_freed)
+    {
+        if (out_data)
+        {
+            free(out_data);
+            out_data = NULL;
+        }
+        if (in_data)
+        {
+            free(in_data);
+            in_data = NULL;
+        }
+        if (data.motor_radios)
+        {
+            free(data.motor_radios);
+            data.motor_radios = NULL;
+        }
+        memory_freed = 1;
+    }
     return 0;
+
 }
