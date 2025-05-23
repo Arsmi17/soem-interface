@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <inttypes.h>
 
-#define NUM_SLAVES 1
+#define NUM_SLAVES 8
 volatile sig_atomic_t keep_running = 1;
 
 // Adjust this structure to match your PDO mapping for velocity mode
@@ -31,6 +31,9 @@ typedef struct __attribute__((packed))
 char IOmap[4096];
 el7_out_t *out_data[NUM_SLAVES];
 el7_in_t *in_data[NUM_SLAVES];
+int selected_slave = -1; // Global variable to track the selected slave (-1 means no slave is selected)
+int velocity_level = 4000; // Global variable for velocity level
+int velocity_increment = 500; // Global variable for velocity increment
 
 void setup_keyboard()
 {
@@ -76,13 +79,64 @@ void set_velocity_mode(int slave_idx)
     usleep(50000); // Give time for mode change to take effect
 }
 
+int set_absolute_encoder(uint16_t slave_idx, uint32_t value)
+{
+    uint16_t index = 0x2015; // P0.15 Absolute Encoder Settings
+    uint8_t subindex = 0x00;
+    int size = sizeof(value);
+
+    // Ensure slave is in PRE-OPERATIONAL state
+    ec_slave[slave_idx + 1].state = EC_STATE_PRE_OP;
+    ec_writestate(slave_idx + 1);
+    if (ec_statecheck(slave_idx + 1, EC_STATE_PRE_OP, EC_TIMEOUTSTATE) != EC_STATE_PRE_OP)
+    {
+        printf("Failed to set slave %d to PRE-OPERATIONAL state\n", slave_idx + 1);
+        return 0;
+    }
+
+    // Write P0.15 to enable multiturn absolute mode
+    printf("Setting P0.15 (0x2015) to %d for slave %d...\n", value, slave_idx + 1);
+    int success = ec_SDOwrite(slave_idx + 1, index, subindex, FALSE, size, &value, EC_TIMEOUTSAFE);
+    if (!success)
+    {
+        printf("Failed to set P0.15 for slave %d\n", slave_idx + 1);
+        return 0;
+    }
+
+    // Transition to INIT for software reset
+    ec_slave[slave_idx + 1].state = EC_STATE_INIT;
+    ec_writestate(slave_idx + 1);
+    usleep(50000);
+    ec_slave[slave_idx + 1].state = EC_STATE_PRE_OP;
+    ec_writestate(slave_idx + 1);
+    if (ec_statecheck(slave_idx + 1, EC_STATE_PRE_OP, EC_TIMEOUTSTATE) != EC_STATE_PRE_OP)
+    {
+        printf("Failed to return slave %d to PRE-OPERATIONAL state after restart\n", slave_idx + 1);
+        return 0;
+    }
+
+    // Verify the setting
+    uint32_t read_value;
+    size = sizeof(read_value);
+    if (ec_SDOread(slave_idx + 1, index, subindex, FALSE, &size, &read_value, EC_TIMEOUTSAFE))
+    {
+        printf("Verified P0.15 = %d for slave %d\n", read_value, slave_idx + 1);
+        return (read_value == value);
+    }
+    else
+    {
+        printf("Failed to verify P0.15 for slave %d\n", slave_idx + 1);
+        return 0;
+    }
+}
+
 int write_leadshine_param_home(uint16 slave, uint16 param_number, uint32 value)
 {
     uint16 index = 0x3000 + param_number;
     uint8 subindex = 0x00;
     int size = sizeof(value);
 
-    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value,EC_TIMEOUTRXM);
+    int success = ec_SDOwrite(slave + 1, index, subindex, FALSE, size, &value, EC_TIMEOUTRXM);
     if (success)
     {
         printf("✅ Successfully wrote Pr0.%d = %d to slave %d (index 0x%04X)\n",
@@ -117,9 +171,24 @@ void verify_mode_of_operation(int slave_idx)
     }
 }
 
-// Set velocity directly via SDO and PDO
+// Modified set_velocity with even/odd velocity limits
 void set_velocity(int slave_idx, int32_t velocity)
 {
+    // Determine max velocity based on whether slave index is even or odd
+    int32_t max_velocity = (slave_idx % 2 == 0) ? 70000 : 4000;
+
+    // Clamp velocity to the allowed range
+    if (velocity > max_velocity)
+    {
+        velocity = max_velocity;
+        printf("Velocity clamped to max %d for slave %d (even/odd rule)\n", max_velocity, slave_idx + 1);
+    }
+    else if (velocity < -max_velocity)
+    {
+        velocity = -max_velocity;
+        printf("Velocity clamped to min %d for slave %d (even/odd rule)\n", -max_velocity, slave_idx + 1);
+    }
+
     printf("Setting velocity for slave %d to %" PRId32 "\n", slave_idx + 1, velocity);
 
     // First, try setting via SDO for initial setup
@@ -268,8 +337,7 @@ void int_handler(int sig)
     exit(0);
 }
 
-int selected_slave = -1; // Global variable to track the selected slave (-1 means no slave is selected)
-
+// Modified select_slave to set velocity_level
 void select_slave(int slave_idx)
 {
     if (slave_idx < 0 || slave_idx >= NUM_SLAVES)
@@ -278,7 +346,10 @@ void select_slave(int slave_idx)
         return;
     }
     selected_slave = slave_idx;
-    printf("Slave %d selected for movement.\n", selected_slave + 1);
+    // Set initial velocity_level based on whether slave is even or odd
+    // even : odd // movement : rotate
+    velocity_level = (slave_idx % 2 == 0) ? 70000 : 4000;
+    printf("Slave %d selected for movement. Initial velocity level set to %d.\n", selected_slave + 1, velocity_level);
 }
 
 int main()
@@ -343,28 +414,17 @@ int main()
     }
 
     printf("Slaves are OPERATIONAL. Use keys:\n");
-    printf("[s] Select slave  [1] Enable drives  [2] Disable drives  [3] Reset fault  [4] Verify mode\n");
+    printf("[1-8] Select slave  [i] Enable drives  [o] Disable drives  [p] Reset fault  [c] Verify mode\n");
     printf("[q] Forward motion  [w] Reverse motion  [space] Stop motion\n");
-    printf("[+] Increase speed  [-] Decrease speed\n");
+    printf("[+] Increase speed  [-] Decrease speed  [a] Set absolute encoder\n");
     printf("[ESC] Quit\n");
 
     setup_keyboard();
     int running = 1;
-    int velocity_level = 160000; // Start with a lower velocity (adjust as needed)
-    int velocity_increment = 500;
 
     while (running)
     {
         send_and_receive();
-
-        // for (int i = 0; i < NUM_SLAVES; ++i)
-        // {
-        //     printf("Slave %d -> Status: 0x%04X | Vel: %d | Pos: %d\n",
-        //            i + 1,
-        //            in_data[i]->status_word,
-        //            in_data[i]->actual_velocity,
-        //            in_data[i]->actual_position);
-        // }
 
         int ch = getchar();
         switch (ch)
@@ -374,6 +434,9 @@ int main()
         case '3':
         case '4':
         case '5':
+        case '6':
+        case '7':
+        case '8':
         {
             int idx = ch - '1'; // Convert ASCII character to zero-based index
             select_slave(idx);
@@ -403,7 +466,7 @@ int main()
         case 'q':
             if (selected_slave == -1)
             {
-                printf("No slave selected. Press 's' to select a slave first.\n");
+                printf("No slave selected. Press '1-8' to select a slave first.\n");
             }
             else
             {
@@ -415,7 +478,7 @@ int main()
         case 'w':
             if (selected_slave == -1)
             {
-                printf("No slave selected. Press 's' to select a slave first.\n");
+                printf("No slave selected. Press '1-8' to select a slave first.\n");
             }
             else
             {
@@ -424,21 +487,47 @@ int main()
             }
             break;
 
-        case 't':
-            if (selected_slave == -1)
+        case 'a': // Set P0.15 for selected slave
+            if (selected_slave < 0 || selected_slave >= ec_slavecount)
             {
-                printf("No slave selected. Press 's' to select a slave first.\n");
+                printf("No slave selected. Select a slave first (1-%d).\n", ec_slavecount);
             }
             else
             {
-                printf("Moving in reverse at velocity %d for slave %d...\n", -velocity_level, selected_slave + 1);
-                write_leadshine_param_home(selected_slave, 15, 1);
+                printf("Setting absolute encoder for slave %d...\n", selected_slave + 1);
+                if (!set_absolute_encoder(selected_slave, 1))
+                {
+                    printf("Failed to set absolute encoder for slave %d\n", selected_slave + 1);
+                }
+                else
+                {
+                    printf("Please power-cycle slave %d to apply P0.15 settings.\n", selected_slave + 1);
+                    restore_keyboard();
+                    printf("Press Enter after power-cycling slave %d...\n", selected_slave + 1);
+                    getchar();
+                    setup_keyboard();
+                    // Reinitialize slave
+                    ec_slave[selected_slave + 1].state = EC_STATE_INIT;
+                    ec_writestate(selected_slave + 1);
+                    ec_slave[selected_slave + 1].state = EC_STATE_PRE_OP;
+                    ec_writestate(selected_slave + 1);
+                    if (ec_statecheck(selected_slave + 1, EC_STATE_PRE_OP, EC_TIMEOUTSTATE) != EC_STATE_PRE_OP)
+                    {
+                        printf("Failed to return slave %d to PRE-OPERATIONAL state\n", selected_slave + 1);
+                    }
+                    else
+                    {
+                        set_velocity_mode(selected_slave);
+                        enable_drive(selected_slave);
+                    }
+                }
             }
             break;
+
         case ' ': // Space key to stop
             if (selected_slave == -1)
             {
-                printf("No slave selected. Press 's' to select a slave first.\n");
+                printf("No slave selected. Press '1-8' to select a slave first.\n");
             }
             else
             {
@@ -448,15 +537,35 @@ int main()
             break;
 
         case '+': // Increase speed
-            velocity_level += velocity_increment;
-            printf("Velocity level increased to %d\n", velocity_level);
+            if (selected_slave == -1)
+            {
+                printf("No slave selected. Press '1-8' to select a slave first.\n");
+            }
+            else
+            {
+                int max_velocity = (selected_slave % 2 == 0) ? 70000 : 4000;
+                velocity_level += velocity_increment;
+                if (velocity_level > max_velocity)
+                {
+                    velocity_level = max_velocity;
+                    printf("Velocity level capped at %d for slave %d (even/odd rule)\n", max_velocity, selected_slave + 1);
+                }
+                printf("Velocity level increased to %d\n", velocity_level);
+            }
             break;
 
         case '-': // Decrease speed
-            velocity_level -= velocity_increment;
-            if (velocity_level < velocity_increment)
-                velocity_level = velocity_increment;
-            printf("Velocity level decreased to %d\n", velocity_level);
+            if (selected_slave == -1)
+            {
+                printf("No slave selected. Press '1-8' to select a slave first.\n");
+            }
+            else
+            {
+                velocity_level -= velocity_increment;
+                if (velocity_level < velocity_increment)
+                    velocity_level = velocity_increment;
+                printf("Velocity level decreased to %d\n", velocity_level);
+            }
             break;
 
         case 27: // ESC key

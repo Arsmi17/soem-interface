@@ -8,7 +8,7 @@
 #include <signal.h>
 #include <math.h>
 
-#define NUM_SLAVES 3
+#define NUM_SLAVES 8
 volatile sig_atomic_t keep_running = 1;
 
 typedef struct __attribute__((packed))
@@ -25,6 +25,19 @@ typedef struct __attribute__((packed))
     int32_t actual_velocity;
     int16_t actual_torque;
 } el7_in_t;
+
+
+int clockwiseDirections[4] = {1, 1, 1, 1};
+
+
+// Anti-clockwise for all
+int anticlockwiseDirections[4] = {-1, -1, -1, -1};
+
+
+// Mixed directions (e.g., robot curve turn)
+int mixedDirections[4] = {1, -1, -1, 1};
+
+
 
 char IOmap[4096];
 el7_out_t *out_data[NUM_SLAVES];
@@ -53,10 +66,21 @@ void send_and_receive()
     usleep(1000);
 }
 
-
 #define POSITION_ACTUAL_VALUE_OFFSET 4 // Assuming position data starts from offset 4
 #define RAW_STEPS_PER_METER 806074880  // Raw steps you're receiving for 1 meter
 #define ACTUAL_STEPS_PER_METER 3148730 // Actual steps it should represent
+
+#define ACTUAL_STEPS_PER_METER_ROTATION 49500 // Actual steps it should represent
+
+#define MOVEMENT_MOTOR_1 0
+#define MOVEMENT_MOTOR_2 2
+#define MOVEMENT_MOTOR_3 4
+#define MOVEMENT_MOTOR_4 6
+
+#define ROTATION_MOTOR_1 1
+#define ROTATION_MOTOR_2 3
+#define ROTATION_MOTOR_3 5
+#define ROTATION_MOTOR_4 7
 
 float read_current_position(int slave_id)
 {
@@ -78,7 +102,6 @@ float read_current_position(int slave_id)
                                      (pos_ptr[1] << 8) |
                                      pos_ptr[0]);
 
-   
     // Apply scaling to get correct position
     float scale_factor = (float)ACTUAL_STEPS_PER_METER / (float)RAW_STEPS_PER_METER;
     float scaled_position = (float)raw_position * scale_factor;
@@ -322,7 +345,7 @@ void wait_until_reached(int slave, int target_position)
         // Use same comparison logic that worked before
         if (fabsf(current_pos - target_position) < 1000)
         {
-            printf("Slave %d reached target position %d\n",slave, target_position);
+            printf("Slave %d reached target position %d\n", slave, target_position);
             // Same delay pattern that worked before
             for (int i = 0; i < 100; i++)
             {
@@ -357,11 +380,11 @@ void delay_with_communication(int milliseconds)
 
 void safe_move_to_absolute(int slave_idx, int target_position)
 {
-    if (!are_all_drives_enabled(NUM_SLAVES))
-    {
-        printf("Error: Not all drives are enabled. Cannot move drive %d.\n", slave_idx + 1);
-        return; // Exit early without moving
-    }
+    // if (!are_all_drives_enabled(NUM_SLAVES))
+    // {
+    //     printf("Error: Not all drives are enabled. Cannot move drive %d.\n", slave_idx + 1);
+    //     return; // Exit early without moving
+    // }
 
     // If all drives are enabled, perform move
     move_to_absolute(slave_idx, target_position);
@@ -447,7 +470,7 @@ void firstMovement()
     delay_with_communication(2);
     safe_move_to_absolute(0, 0);
     delay_with_communication(2);
-    wait_until_reached(2,quarterMile);
+    wait_until_reached(2, quarterMile);
     wait_until_reached(1, secondMile);
     delay_with_communication(1000);
 
@@ -477,6 +500,18 @@ void firstMovement()
     // delay_with_communication(1000); // 2 seconds delay
 }
 
+void configure_slave_with_params(int index, uint32_t profile_velocity,
+                                 uint32_t max_velocity, uint32_t acceleration, uint32_t deceleration)
+{
+    int slave = index + 1;
+    out_data[index] = (el7_out_t *)ec_slave[slave].outputs;
+    in_data[index] = (el7_in_t *)ec_slave[slave].inputs;
+    ec_SDOwrite(slave, 0x6081, 0x00, FALSE, sizeof(profile_velocity), &profile_velocity, EC_TIMEOUTSAFE);
+    ec_SDOwrite(slave, 0x607F, 0x00, FALSE, sizeof(max_velocity), &max_velocity, EC_TIMEOUTSAFE);
+    ec_SDOwrite(slave, 0x6083, 0x00, FALSE, sizeof(acceleration), &acceleration, EC_TIMEOUTSAFE);
+    ec_SDOwrite(slave, 0x6084, 0x00, FALSE, sizeof(deceleration), &deceleration, EC_TIMEOUTSAFE);
+}
+
 void secondMovement()
 {
     int homePosition = 0;
@@ -488,41 +523,178 @@ void secondMovement()
     delay_with_communication(2);
     wait_until_reached(2, homePosition);
     wait_until_reached(1, homePosition);
-    wait_until_reached(0,homePosition);
+    wait_until_reached(0, homePosition);
     delay_with_communication(1000);
 }
 
+void sampleHomeTest()
+{
+    safe_move_to_absolute(MOVEMENT_MOTOR_4, 10000);
+    delay_with_communication(10);
+    wait_until_reached(MOVEMENT_MOTOR_4, 10000);
+}
+
+void defaultMovementSteps(int motorName, int position, int delayTime)
+{
+    safe_move_to_absolute(motorName, position);
+    delay_with_communication(delayTime);
+}
+
+void moveToCenterFromHomePosition()
+{
+    // int sameSpeed = 400000;
+    // int sameAcceleration = 200000;
+    // int sameDeceleration = 200000;
+    // configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    // configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    // configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    // configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+
+    int sameSpeed = 600000;
+    int sameAcceleration = 400000;
+    int sameDeceleration = 400000;
+    int divideFactor =3;
+    configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+
+
+    int quarterMile = 1.18 * ACTUAL_STEPS_PER_METER;
+    int delayTime = 30;
+
+    defaultMovementSteps(MOVEMENT_MOTOR_4, quarterMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_3, quarterMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_2, quarterMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_1, quarterMile, delayTime);
+    wait_until_reached(MOVEMENT_MOTOR_1, quarterMile);
+    printf("Movement to position 0 completed for slave 7.\n");
+}
+
+
+
+void SeperateEquallyfromCenter()
+{
+    int sameSpeed = 600000;
+    int sameAcceleration = 400000;
+    int sameDeceleration = 400000;
+    int divideFactor =3;
+    configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+
+    int fourthMile = (1.18 * ACTUAL_STEPS_PER_METER) + (1.20 * ACTUAL_STEPS_PER_METER);
+    int thirdMile = (1.18 * ACTUAL_STEPS_PER_METER) + (0.4 * ACTUAL_STEPS_PER_METER);
+    int secondMile = (1.18 * ACTUAL_STEPS_PER_METER) - (0.4 * ACTUAL_STEPS_PER_METER);
+    int firstMile = (1.18 * ACTUAL_STEPS_PER_METER) - (1.20 * ACTUAL_STEPS_PER_METER);
+
+    int delayTime = 30;
+
+    defaultMovementSteps(MOVEMENT_MOTOR_4, fourthMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_3, thirdMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_2, secondMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_1, firstMile, delayTime);
+    wait_until_reached(MOVEMENT_MOTOR_1, firstMile);
+    wait_until_reached(MOVEMENT_MOTOR_3, thirdMile);
+    printf("Movement to position 0 completed for slave 7.\n");
+}
+
+void SeperateEquallySecondaryfromCenter()
+{
+    int sameSpeed = 600000;
+    int sameAcceleration = 400000;
+    int sameDeceleration = 400000;
+    int divideFactor =3;
+    configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+
+    int fourthMile = (1.18 * ACTUAL_STEPS_PER_METER) + (0.6 * ACTUAL_STEPS_PER_METER);
+    int thirdMile = (1.18 * ACTUAL_STEPS_PER_METER) + (0.2 * ACTUAL_STEPS_PER_METER);
+    int secondMile = (1.18 * ACTUAL_STEPS_PER_METER) - (0.2 * ACTUAL_STEPS_PER_METER);
+    int firstMile = (1.18 * ACTUAL_STEPS_PER_METER) - (0.6 * ACTUAL_STEPS_PER_METER);
+
+    int delayTime = 30;
+
+    defaultMovementSteps(MOVEMENT_MOTOR_4, fourthMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_3, thirdMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_2, secondMile, delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_1, firstMile, delayTime);
+    wait_until_reached(MOVEMENT_MOTOR_1, firstMile);
+    wait_until_reached(MOVEMENT_MOTOR_3, thirdMile);
+    printf("Movement to position 0 completed for slave 7.\n");
+}
+
+void Rotate(int directions[4]) {
+    int sameSpeed = 4000;
+    int sameAcceleration = 2000;
+    int sameDeceleration = 2000;
+    int divideFactor = 3;
+
+    // Configure movement motors
+    configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+    configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration / divideFactor, sameDeceleration / divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration / divideFactor, sameDeceleration / divideFactor);
+    configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
+
+    int delayTime = 30;
+
+    // Calculate target positions based on direction
+    int mile = ACTUAL_STEPS_PER_METER_ROTATION;
+
+    int targets[4] = {
+        directions[0] * mile,
+        directions[1] * mile,
+        directions[2] * mile,
+        directions[3] * mile
+    };
+
+    // Send movement commands
+    defaultMovementSteps(ROTATION_MOTOR_4, targets[0], delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_3, targets[1], delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_2, targets[2], delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_1, targets[3], delayTime);
+
+    // Wait for key motors to finish (you can customize which to wait on)
+    wait_until_reached(ROTATION_MOTOR_1, targets[3]);
+    wait_until_reached(ROTATION_MOTOR_3, targets[1]);
+    printf("Movement to position completed.\n");
+
+    int homePosition = 0;
+    // Move all back to home
+    defaultMovementSteps(ROTATION_MOTOR_4, homePosition, delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_3, homePosition, delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_2, homePosition, delayTime);
+    defaultMovementSteps(ROTATION_MOTOR_1, homePosition, delayTime);
+
+    wait_until_reached(ROTATION_MOTOR_1, homePosition);
+    wait_until_reached(ROTATION_MOTOR_3, homePosition);
+    printf("Returned to home position.\n");
+}
+
+
+
+
+
 void testFirstMovement()
 {
-    // int quarterMile = 0.2 * ACTUAL_STEPS_PER_METER;
-    // safe_move_to_absolute(2, quarterMile);
-    // wait_until_reached(1,quarterMile);
+   moveToCenterFromHomePosition();
+   SeperateEquallySecondaryfromCenter();
+   
     // delay_with_communication(1000);
-    safe_move_to_absolute(2,0.3*ACTUAL_STEPS_PER_METER);
-    delay_with_communication(10);
-    safe_move_to_absolute(1,0.2*ACTUAL_STEPS_PER_METER);
-    delay_with_communication(10);
-    safe_move_to_absolute(0,0.1*ACTUAL_STEPS_PER_METER);
-    wait_until_reached(2,0.3*ACTUAL_STEPS_PER_METER);
-    wait_until_reached(1,0.2*ACTUAL_STEPS_PER_METER);
-    wait_until_reached(0,0.1*ACTUAL_STEPS_PER_METER);
-    delay_with_communication(1000);
-    printf("Target Reached");
+    // SeperateEquallyfromCenter();
+    
 }
 
 void testSecondMovement()
 {
-    int homePosition = 0;
-    safe_move_to_absolute(0,homePosition);
-    delay_with_communication(10);
-    safe_move_to_absolute(1,homePosition);
-    delay_with_communication(10);
-    safe_move_to_absolute(2,homePosition);
-    wait_until_reached(0,homePosition);
-    wait_until_reached(1,homePosition);
-    wait_until_reached(2,homePosition);
-    delay_with_communication(1000);
-    printf("Target Reached");
+    
+    //SeperateEquallyfromCenter();
+    Rotate(mixedDirections);
+    SeperateEquallyfromCenter();
+    Rotate(clockwiseDirections);
 }
 
 void negate_test()
@@ -756,27 +928,26 @@ int main()
         uint8_t mode = 1;
 
         // Default motion parameters
-        uint32_t profile_velocity = 200000;
-        uint32_t max_velocity = 300000;
-        uint32_t acceleration = 200000;
-        uint32_t deceleration = 250000;
+        uint32_t profile_velocity = 80000;
+        uint32_t max_velocity = 80000;
+        uint32_t acceleration = 6000;
+        uint32_t deceleration = 6000;
 
-        if (i == 1)
-        {
-            profile_velocity /= 1.5;
-            max_velocity /= 1.5;
-            acceleration /= 1.5;
-            deceleration /= 1.5;
-        }
+        // if (i == 1)
+        // {
+        //     profile_velocity /= 1.5;
+        //     max_velocity /= 1.5;
+        //     acceleration /= 1.5;
+        //     deceleration /= 1.5;
+        // }
 
-        if (i == 0)
-        {
-            profile_velocity /= 3;
-            max_velocity /= 3;
-            acceleration /= 3;
-            deceleration /= 3;
-        }
-
+        // if (i == 0)
+        // {
+        //     profile_velocity /= 3;
+        //     max_velocity /= 3;
+        //     acceleration /= 3;
+        //     deceleration /= 3;
+        // }
 
         // Setting it to Profile Position Mode
         ec_SDOwrite(i + 1, 0x6060, 0x00, FALSE, sizeof(mode), &mode, EC_TIMEOUTSAFE);
@@ -840,10 +1011,11 @@ int main()
         case 'q':
             template_2_loop();
             break;
-        case 'f':
+            break;
+        case 'a':
             testFirstMovement();
             break;
-        case 'g':
+        case 's':
             testSecondMovement();
             break;
         // case 'w':

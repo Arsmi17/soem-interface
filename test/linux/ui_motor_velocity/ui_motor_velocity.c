@@ -1001,8 +1001,8 @@ int main(int argc, char *argv[])
         out_data[i] = (el7_out_t *)ec_slave[i + 1].outputs;
         in_data[i] = (el7_in_t *)ec_slave[i + 1].inputs;
 
-        uint32_t profile_acceleration = 500000;
-        uint32_t profile_deceleration = 500000;
+        uint32_t profile_acceleration = 100000;
+        uint32_t profile_deceleration = 100000;
         uint32_t max_profile_velocity = 500000;
         printf("entered for loop\n");
         if (!ec_SDOwrite(i + 1, 0x6083, 0x00, FALSE, sizeof(profile_acceleration), &profile_acceleration, EC_TIMEOUTSAFE))
