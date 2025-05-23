@@ -540,6 +540,45 @@ void defaultMovementSteps(int motorName, int position, int delayTime)
     delay_with_communication(delayTime);
 }
 
+void moveMotorsWithSteps(
+    int motorSteps[4],
+    int baseSpeed,
+    int baseAcceleration,
+    int baseDeceleration,
+    int divideFactor,
+    const char* logLabel
+) {
+    int delayTime = 30;
+
+    // Configure motors
+    configure_slave_with_params(MOVEMENT_MOTOR_4, baseSpeed, baseSpeed, baseAcceleration, baseDeceleration);
+    if(divideFactor != 0)
+    {
+        configure_slave_with_params(MOVEMENT_MOTOR_3, baseSpeed / divideFactor, baseSpeed / divideFactor, baseAcceleration / divideFactor, baseDeceleration / divideFactor);
+        configure_slave_with_params(MOVEMENT_MOTOR_2, baseSpeed / divideFactor, baseSpeed / divideFactor, baseAcceleration / divideFactor, baseDeceleration / divideFactor);
+    }
+    else
+    {
+        configure_slave_with_params(MOVEMENT_MOTOR_3, baseSpeed, baseSpeed, baseAcceleration, baseDeceleration);
+        configure_slave_with_params(MOVEMENT_MOTOR_2, baseSpeed, baseSpeed, baseAcceleration, baseDeceleration);
+    }
+    configure_slave_with_params(MOVEMENT_MOTOR_1, baseSpeed, baseSpeed, baseAcceleration, baseDeceleration);
+
+    // Issue movement steps
+    defaultMovementSteps(MOVEMENT_MOTOR_4, motorSteps[3], delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_3, motorSteps[2], delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_2, motorSteps[1], delayTime);
+    defaultMovementSteps(MOVEMENT_MOTOR_1, motorSteps[0], delayTime);
+
+    // Wait for selected motors (can add others if needed)
+    wait_until_reached(MOVEMENT_MOTOR_1, motorSteps[0]);
+    wait_until_reached(MOVEMENT_MOTOR_3, motorSteps[2]);
+
+    printf("Movement completed: %s\n", logLabel);
+}
+
+
+
 void moveToCenterFromHomePosition()
 {
     // int sameSpeed = 400000;
@@ -550,9 +589,9 @@ void moveToCenterFromHomePosition()
     // configure_slave_with_params(MOVEMENT_MOTOR_2, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
     // configure_slave_with_params(MOVEMENT_MOTOR_1, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
 
-    int sameSpeed = 600000;
-    int sameAcceleration = 400000;
-    int sameDeceleration = 400000;
+    int sameSpeed = 300000;
+    int sameAcceleration = 150000;
+    int sameDeceleration = 150000;
     int divideFactor =3;
     configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
     configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
@@ -575,9 +614,9 @@ void moveToCenterFromHomePosition()
 
 void SeperateEquallyfromCenter()
 {
-    int sameSpeed = 600000;
-    int sameAcceleration = 400000;
-    int sameDeceleration = 400000;
+    int sameSpeed = 300000;
+    int sameAcceleration = 150000;
+    int sameDeceleration = 150000;
     int divideFactor =3;
     configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
     configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
@@ -602,9 +641,9 @@ void SeperateEquallyfromCenter()
 
 void SeperateEquallySecondaryfromCenter()
 {
-    int sameSpeed = 600000;
-    int sameAcceleration = 400000;
-    int sameDeceleration = 400000;
+    int sameSpeed = 300000;
+    int sameAcceleration = 150000;
+    int sameDeceleration = 150000;
     int divideFactor =3;
     configure_slave_with_params(MOVEMENT_MOTOR_4, sameSpeed, sameSpeed, sameAcceleration, sameDeceleration);
     configure_slave_with_params(MOVEMENT_MOTOR_3, sameSpeed / divideFactor, sameSpeed / divideFactor, sameAcceleration/divideFactor, sameDeceleration/divideFactor);
@@ -676,12 +715,67 @@ void Rotate(int directions[4]) {
 
 
 
+int centerSteps[4] = {
+    1.18 * ACTUAL_STEPS_PER_METER,
+    1.18 * ACTUAL_STEPS_PER_METER,
+    1.18 * ACTUAL_STEPS_PER_METER,
+    1.18 * ACTUAL_STEPS_PER_METER
+};
 
+int endSteps[4] = {
+    (1.18 - 1.20) * ACTUAL_STEPS_PER_METER,
+    (1.18 - 0.4) * ACTUAL_STEPS_PER_METER,
+    (1.18 + 0.4) * ACTUAL_STEPS_PER_METER,
+    (1.18 + 1.20) * ACTUAL_STEPS_PER_METER
+};
+
+int midseparateSteps[4] = {
+    (1.18 - 0.6) * ACTUAL_STEPS_PER_METER,
+    (1.18 - 0.2) * ACTUAL_STEPS_PER_METER,
+    (1.18 + 0.2) * ACTUAL_STEPS_PER_METER,
+    (1.18 + 0.6) * ACTUAL_STEPS_PER_METER
+};
 
 void testFirstMovement()
 {
-   moveToCenterFromHomePosition();
-   SeperateEquallySecondaryfromCenter();
+    moveMotorsWithSteps(
+        (int[]){0, 0, 0, 0},
+        400000,
+        200000,
+        200000,
+        0,
+        "First Movement"
+    );
+    moveMotorsWithSteps(
+        centerSteps,
+        400000,
+        200000,
+        200000,
+        0,
+        "First Movement"
+    );
+    moveMotorsWithSteps(
+        midseparateSteps,
+        400000,
+        200000,
+        200000,
+        3,
+        "Mid Separate Movement"
+    );
+
+    moveMotorsWithSteps(
+        endSteps,
+        400000,
+        200000,
+        200000,
+        3,
+        "End Movement"
+    );
+    
+
+
+   // moveToCenterFromHomePosition();
+   // SeperateEquallySecondaryfromCenter();
    
     // delay_with_communication(1000);
     // SeperateEquallyfromCenter();
@@ -692,9 +786,9 @@ void testSecondMovement()
 {
     
     //SeperateEquallyfromCenter();
-    Rotate(mixedDirections);
-    SeperateEquallyfromCenter();
-    Rotate(clockwiseDirections);
+    // Rotate(mixedDirections);
+    // SeperateEquallyfromCenter();
+    // Rotate(clockwiseDirections);
 }
 
 void negate_test()
