@@ -634,8 +634,8 @@ void SeperateEquallyfromCenter()
     defaultMovementSteps(MOVEMENT_MOTOR_3, thirdMile, delayTime);
     defaultMovementSteps(MOVEMENT_MOTOR_2, secondMile, delayTime);
     defaultMovementSteps(MOVEMENT_MOTOR_1, firstMile, delayTime);
-    wait_until_reached(MOVEMENT_MOTOR_1, firstMile);
-    wait_until_reached(MOVEMENT_MOTOR_3, thirdMile);
+    wait_until_reached(MOVEMENT_MOTOR_1, firstMile/2);
+    wait_until_reached(MOVEMENT_MOTOR_3, thirdMile/2);
     printf("Movement to position 0 completed for slave 7.\n");
 }
 
@@ -738,14 +738,14 @@ int midseparateSteps[4] = {
 
 void testFirstMovement()
 {
-    moveMotorsWithSteps(
-        (int[]){0, 0, 0, 0},
-        400000,
-        200000,
-        200000,
-        0,
-        "First Movement"
-    );
+    // moveMotorsWithSteps(
+    //     (int[]){0, 0, 0, 0},
+    //     400000,
+    //     200000,
+    //     200000,
+    //     0,
+    //     "First Movement"
+    // );
     moveMotorsWithSteps(
         centerSteps,
         400000,
@@ -754,25 +754,10 @@ void testFirstMovement()
         0,
         "First Movement"
     );
-    moveMotorsWithSteps(
-        midseparateSteps,
-        400000,
-        200000,
-        200000,
-        3,
-        "Mid Separate Movement"
-    );
 
-    moveMotorsWithSteps(
-        endSteps,
-        400000,
-        200000,
-        200000,
-        3,
-        "End Movement"
-    );
+    SeperateEquallyfromCenter();
     
-
+    Rotate(clockwiseDirections);
 
    // moveToCenterFromHomePosition();
    // SeperateEquallySecondaryfromCenter();
