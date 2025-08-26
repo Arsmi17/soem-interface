@@ -1,5 +1,5 @@
 # Simple Open EtherCAT Master Library
-[![Build Status](https://github.com/OpenEtherCATsociety/SOEM/workflows/build/badge.svg?branch=master)](https://github.com/OpenEtherCATsociety/SOEM/actions?workflow=build)
+(https://github.com/OpenEtherCATsociety/SOEM/workflows/build/badge.svg?branch=master)](https://github.com/OpenEtherCATsociety/SOEM/actions?workflow=build)
 
 BUILDING
 ========
@@ -13,6 +13,12 @@ Prerequisites for all platforms
 
 Windows (Visual Studio)
 -----------------------
+
+
+ * for MSYS2 UCRT64:
+   * `cmake -G "Ninja" ..`
+   * `ninja`
+   * `./test/linux/SMCI/SMCI`
 
  * Start a Visual Studio command prompt then:
    * `mkdir build`
