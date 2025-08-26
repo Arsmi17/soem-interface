@@ -1,0 +1,138 @@
+/* For STOP button */
+.stop-button {
+  background: red;
+  color: white;
+  font-weight: bold;
+}
+
+/* For START button */
+.start-button {
+  background: #4CAF50;
+  color: white;
+  font-weight: bold;
+}
+
+.start-active {
+  background: #2980b9; /* Primary Blue */
+  color: white;
+  font-weight: bold;
+}
+
+/* For status=ENABLE */
+.status-enabled {
+  background: #3498db;
+  color: white;
+}
+
+/* For status=DISABLE */
+.status-disabled {
+  background: #e74c3c;
+  color: white;
+}
+
+/* For breaks=ON */
+.breaks-on {
+  background: #27ae60;
+  color: white;
+}
+
+/* For breaks=OFF */
+.breaks-off {
+  background: #c0392b;
+  color: white;
+}
+/* For motion-active */
+.motion-active {
+  background: #007acc;
+  color: white;
+  font-weight: bold;
+}
+/* For Reset Button */
+.reset-btn {
+  background: #dcb01f;
+  color: #000;
+}
+
+/* For matrix buttons */
+.selected {
+  background: #2ecc71; /* Green */
+  color: white;
+  font-weight: bold;
+}
+
+.template-button {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.slave-selected {
+  background: #4CAF50;
+  color: white;
+  font-weight: bold;
+}
+
+.column-highlight {
+  background: #e67e22;
+  color: white;
+  font-weight: bold;
+}
+
+.row-highlight {
+  background: #1abc9c;
+  color: white;
+  font-weight: bold;
+}
+
+.zone-highlight {
+  background: #8e44ad;
+  color: white;
+  font-weight: bold;
+}
+
+.default-text {
+  color: #555;
+  font-style: italic;
+}
+
+.return-button {
+  background: #555;
+  color: white;
+  font-weight: bold;
+}
+
+.frame {
+  border: 1px solid #C0C0C0;
+  background: #F9F9F9;
+  border-radius: 3px;
+  padding: 4px;
+}
+
+.monospace {
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+}
+
+.warning {
+    color: orange;
+    font-weight: bold;
+}
+
+.error {
+    color: red;
+    font-weight: bold;
+}
+
+/* Velocity - OVerlay */
+
+.loading-overlay {
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: 10px;
+    padding: 30px;
+    border: 2px solid #ccc;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.loading-overlay label {
+    color: #333;
+    margin: 5px 0;
+}

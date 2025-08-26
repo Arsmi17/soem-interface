@@ -1,0 +1,60 @@
+{
+  "type": "HMRS",
+  "total_slaves": 9,
+  "default_speed": 100000,
+  "template": [
+    {
+      "name": "test_first_movement",
+      "steps": [
+        {
+          "pattern_name": "move_to_position_1",
+          "pattern_number": 1,
+          "slaves": [
+            { "slave_id": 0, "target_position": 0.1, "speed": 100000 },
+            { "slave_id": 1, "target_position": 0.2, "speed": 100000 },
+            { "slave_id": 2, "target_position": 0.3, "speed": 100000 },
+            { "slave_id": 3, "target_position": 0.4, "speed": 100000 },
+            { "slave_id": 4, "target_position": 0.5, "speed": 100000 },
+            { "slave_id": 5, "target_position": 0.6, "speed": 100000 },
+            { "slave_id": 6, "target_position": 0.7, "speed": 100000 },
+            { "slave_id": 7, "target_position": 0.8, "speed": 100000 },
+            { "slave_id": 8, "target_position": 0.9, "speed": 100000 }
+          ],
+          "delay_ms": 30
+        },
+        {
+          "pattern_name": "move_to_position_2",
+          "pattern_number": 2,
+          "slaves": [
+            { "slave_id": 0, "target_position": 0.9, "speed": 100000 },
+            { "slave_id": 1, "target_position": 0.8, "speed": 100000 },
+            { "slave_id": 2, "target_position": 0.7, "speed": 100000 },
+            { "slave_id": 3, "target_position": 0.6, "speed": 100000 },
+            { "slave_id": 4, "target_position": 0.5, "speed": 100000 },
+            { "slave_id": 5, "target_position": 0.4, "speed": 100000 },
+            { "slave_id": 6, "target_position": 0.3, "speed": 100000 },
+            { "slave_id": 7, "target_position": 0.2, "speed": 100000 },
+            { "slave_id": 8, "target_position": 0.1, "speed": 100000 }
+          ],
+          "delay_ms": 30
+        },
+        {
+          "pattern_name": "center_pulse",
+          "pattern_number": 3,
+          "slaves": [
+            { "slave_id": 0, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 1, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 2, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 3, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 4, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 5, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 6, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 7, "target_position": 0.5, "speed": 150000 },
+            { "slave_id": 8, "target_position": 0.5, "speed": 150000 }
+          ],
+          "delay_ms": 50
+        }
+      ]
+    }
+  ]
+}

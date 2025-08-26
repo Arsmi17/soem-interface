@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk+" version="3.0"/>
+  <object class="GtkWindow" id="main_window">
+    <property name="title">EtherCAT Controller</property>
+    <property name="default-width">400</property>
+    <property name="default-height">300</property>
+    <child>
+      <object class="GtkBox" id="main_box">
+        <property name="orientation">vertical</property>
+        <property name="spacing">10</property>
+        <property name="margin">10</property>
+        <child>
+          <object class="GtkButton" id="enable_button">
+            <property name="label">Enable All Drives</property>
+            <signal name="clicked" handler="on_enable_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="disable_button">
+            <property name="label">Disable All Drives</property>
+            <signal name="clicked" handler="on_disable_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="reset_button">
+            <property name="label">Reset Fault All</property>
+            <signal name="clicked" handler="on_reset_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="status_button">
+            <property name="label">Check Status</property>
+            <signal name="clicked" handler="on_status_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="template_button">
+            <property name="label">Run Template</property>
+            <signal name="clicked" handler="on_template_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="template_loop_button">
+            <property name="label">Run Template Loop</property>
+            <signal name="clicked" handler="on_template_loop_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkButton" id="quit_button">
+            <property name="label">Quit</property>
+            <signal name="clicked" handler="on_quit_button_clicked"/>
+          </object>
+        </child>
+        <child>
+          <object class="GtkTextView" id="status_textview">
+            <property name="editable">false</property>
+            <property name="hexpand">true</property>
+            <property name="vexpand">true</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
+</interface>

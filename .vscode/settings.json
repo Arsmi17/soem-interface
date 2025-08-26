@@ -6,6 +6,8 @@
         "stdio.h": "c",
         "termios.h": "c",
         "string.h": "c",
-        "unistd.h": "c"
+        "unistd.h": "c",
+        "json_sequence_executor.h": "c",
+        "json_movement_loader.h": "c"
     }
 }

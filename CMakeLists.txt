@@ -26,9 +26,23 @@ endif()
 if(UNIX AND NOT APPLE)  # Linux
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+  # Find liblo using pkg-config
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(LIBLO REQUIRED liblo)
 elseif(APPLE)  # macOS
   find_package(PkgConfig REQUIRED)
   pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+elseif(WIN32)
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(GTK3 REQUIRED gtk+-3.0)
+  include_directories(${GTK3_INCLUDE_DIRS})
+  link_directories(${GTK3_LIBRARY_DIRS})
+  add_definitions(${GTK3_CFLAGS_OTHER})
+
+  # JSON-GLib
+  pkg_check_modules(JSONGLIB REQUIRED json-glib-1.0)
+  include_directories(${JSONGLIB_INCLUDE_DIRS})
+  link_directories(${JSONGLIB_LIBRARY_DIRS})
 endif()
 
 if(WIN32)
@@ -130,9 +144,5 @@ install(FILES
 if(BUILD_TESTS) 
   add_subdirectory(test/simple_ng)
   add_subdirectory(test/linux/slaveinfo)
-  add_subdirectory(test/linux/single_motor_test)
-  add_subdirectory(test/linux/slave_detector_api)
-  add_subdirectory(test/linux/single_motor_test_velocity)
-  add_subdirectory(test/linux/ui_motor_velocity)
-  add_subdirectory(test/linux/cyclic_synchronous_velocity_mode)
+  add_subdirectory(test/linux/SMCI)
 endif()

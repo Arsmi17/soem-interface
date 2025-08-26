@@ -1,0 +1,29 @@
+{
+  "storeName": "TechZone",
+  "products": [
+    {
+      "id": 101,
+      "name": "Wireless Mouse",
+      "category": "Electronics",
+      "price": 19.99,
+      "inStock": true,
+      "tags": ["computer", "accessory", "wireless"]
+    },
+    {
+      "id": 102,
+      "name": "Bluetooth Headphones",
+      "category": "Audio",
+      "price": 49.99,
+      "inStock": false,
+      "tags": ["music", "bluetooth", "headphones"]
+    },
+    {
+      "id": 103,
+      "name": "Mechanical Keyboard",
+      "category": "Computers",
+      "price": 89.99,
+      "inStock": true,
+      "tags": ["keyboard", "gaming", "mechanical"]
+    }
+  ]
+}
