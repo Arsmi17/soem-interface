@@ -1,5 +1,6 @@
 # Simple Open EtherCAT Master Library
-(https://github.com/OpenEtherCATsociety/SOEM/workflows/build/badge.svg?branch=master)](https://github.com/OpenEtherCATsociety/SOEM/actions?workflow=build)
+(https://github.com/OpenEtherCATsociety/SOEM/workflows/build/badge.svg?branch=master)
+(https://github.com/OpenEtherCATsociety/SOEM/actions?workflow=build)
 
 BUILDING
 ========
